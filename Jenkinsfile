@@ -37,9 +37,13 @@ pipeline {
 
             docker tag kafka-monitoring/producer:${TAG} ${REGISTRY}/${REPO}/producer:${TAG}
             docker tag kafka-monitoring/consumer:${TAG} ${REGISTRY}/${REPO}/consumer:${TAG}
+            docker tag kafka-monitoring/producer:${TAG} ${REGISTRY}/${REPO}/producer:latest
+            docker tag kafka-monitoring/consumer:${TAG} ${REGISTRY}/${REPO}/consumer:latest
 
             docker push ${REGISTRY}/${REPO}/producer:${TAG}
             docker push ${REGISTRY}/${REPO}/consumer:${TAG}
+            docker push ${REGISTRY}/${REPO}/producer:latest
+            docker push ${REGISTRY}/${REPO}/consumer:latest
           '''
         }
       }
