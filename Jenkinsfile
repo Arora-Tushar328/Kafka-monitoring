@@ -1,12 +1,17 @@
 pipeline {
   agent any
 
+  environment {
+    REGISTRY = "localhost:8083"
+    REPO = "docker-hosted"
+  }
+
   stages {
     stage('Checkout') {
       steps { checkout scm }
     }
 
-    stage('Syntax Check') {
+    stage('Lint') {
       steps {
         sh 'python3 -m py_compile stock_producer.py kafka_consumer.py'
       }
@@ -20,15 +25,23 @@ pipeline {
         sh '''
           docker build -t kafka-monitoring/producer:${TAG} -f Dockerfile.stock .
           docker build -t kafka-monitoring/consumer:${TAG} -f Dockerfile.consumer .
-          docker tag kafka-monitoring/producer:${TAG} kafka-monitoring/producer:latest
-          docker tag kafka-monitoring/consumer:${TAG} kafka-monitoring/consumer:latest
         '''
       }
     }
 
-    stage('List Images') {
+    stage('Push to Nexus') {
       steps {
-        sh 'docker images | grep kafka-monitoring || true'
+        withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+          sh '''
+            echo "$NEXUS_PASS" | docker login ${REGISTRY} -u "$NEXUS_USER" --password-stdin
+
+            docker tag kafka-monitoring/producer:${TAG} ${REGISTRY}/${REPO}/producer:${TAG}
+            docker tag kafka-monitoring/consumer:${TAG} ${REGISTRY}/${REPO}/consumer:${TAG}
+
+            docker push ${REGISTRY}/${REPO}/producer:${TAG}
+            docker push ${REGISTRY}/${REPO}/consumer:${TAG}
+          '''
+        }
       }
     }
   }
