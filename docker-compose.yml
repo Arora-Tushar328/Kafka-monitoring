@@ -79,28 +79,28 @@ services:
       - prometheus
     restart: unless-stopped
 
-  stock-producer:
+  weather-producer:
     build:
       context: .
-      dockerfile: Dockerfile.stock
-    container_name: stock-producer
+      dockerfile: Dockerfile.weather-producer
+    container_name: weather-producer
     depends_on:
       - kafka
     environment:
       KAFKA_BROKER: kafka:9092
-      ALPHA_VANTAGE_KEY: "YOUR_API_KEY"
     restart: unless-stopped
 
-  stock-consumer:
+  weather-consumer:
     build:
       context: .
-      dockerfile: Dockerfile.consumer
-    container_name: stock-consumer
+      dockerfile: Dockerfile.weather-consumer
+    container_name: weather-consumer
     depends_on:
       - kafka
     environment:
       KAFKA_BROKER: kafka:9092
     restart: unless-stopped
+
 volumes:
   grafana_data:
   prometheus_data:

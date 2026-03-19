@@ -23,8 +23,8 @@ pipeline {
           env.TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
         }
         sh '''
-          docker build -t kafka-monitoring/producer:${TAG} -f Dockerfile.stock .
-          docker build -t kafka-monitoring/consumer:${TAG} -f Dockerfile.consumer .
+         docker build -t kafka-monitoring/producer:${TAG} -f Dockerfile.weather-producer .
+         docker build -t kafka-monitoring/consumer:${TAG} -f Dockerfile.weather-consumer .
         '''
       }
     }
