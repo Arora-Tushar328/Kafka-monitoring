@@ -6,7 +6,7 @@ pipeline {
       steps { checkout scm }
     }
 
-    stage('Lint') {
+    stage('Syntax Check') {
       steps {
         sh 'python3 -m py_compile stock_producer.py kafka_consumer.py'
       }
