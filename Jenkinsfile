@@ -25,6 +25,12 @@ pipeline {
         '''
       }
     }
+
+    stage('List Images') {
+      steps {
+        sh 'docker images | grep kafka-monitoring || true'
+      }
+    }
   }
 }
 
