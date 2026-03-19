@@ -8,7 +8,7 @@ pipeline {
 
     stage('Lint') {
       steps {
-        sh 'python -m py_compile stock_producer.py kafka_consumer.py'
+        sh 'python3 -m py_compile stock_producer.py kafka_consumer.py'
       }
     }
 
