@@ -6,19 +6,25 @@ pipeline {
       steps { checkout scm }
     }
 
-    stage('Build Images') {
+    stage('Lint') {
       steps {
-        sh '''
-          docker build -t kafka-monitoring/producer -f Dockerfile.stock .
-          docker build -t kafka-monitoring/consumer -f Dockerfile.consumer .
-        '''
+        sh 'python -m py_compile stock_producer.py kafka_consumer.py'
       }
     }
 
-    stage('List Images') {
+    stage('Build Images') {
       steps {
-        sh 'docker images | grep kafka-monitoring || true'
+        script {
+          env.TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+        }
+        sh '''
+          docker build -t kafka-monitoring/producer:${TAG} -f Dockerfile.stock .
+          docker build -t kafka-monitoring/consumer:${TAG} -f Dockerfile.consumer .
+          docker tag kafka-monitoring/producer:${TAG} kafka-monitoring/producer:latest
+          docker tag kafka-monitoring/consumer:${TAG} kafka-monitoring/consumer:latest
+        '''
       }
     }
   }
 }
+
