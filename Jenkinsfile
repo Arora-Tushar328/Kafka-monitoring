@@ -13,7 +13,7 @@ pipeline {
 
     stage('Lint') {
       steps {
-        sh 'python3 -m py_compile stock_producer.py kafka_consumer.py'
+        sh 'python3 -m py_compile weather_producer.py weather_consumer.py'
       }
     }
 
@@ -23,8 +23,8 @@ pipeline {
           env.TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
         }
         sh '''
-         docker build -t kafka-monitoring/producer:${TAG} -f Dockerfile.weather-producer .
-         docker build -t kafka-monitoring/consumer:${TAG} -f Dockerfile.weather-consumer .
+          docker build -t kafka-monitoring/producer:${TAG} -f Dockerfile.weather-producer .
+          docker build -t kafka-monitoring/consumer:${TAG} -f Dockerfile.weather-consumer .
         '''
       }
     }
