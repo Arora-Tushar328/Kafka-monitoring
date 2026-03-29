@@ -28,7 +28,14 @@ pipeline {
         '''
       }
     }
-
+   stage('Image Scan (Trivy)') {
+     steps {
+           sh '''
+           trivy image --severity HIGH,CRITICAL --exit-code 1 kafka-monitoring/producer:${TAG}
+           trivy image --severity HIGH,CRITICAL --exit-code 1 kafka-monitoring/consumer:${TAG}
+           '''
+      }
+     }
     stage('Push to Nexus') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
