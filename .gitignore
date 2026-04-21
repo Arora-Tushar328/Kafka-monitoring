@@ -17,3 +17,7 @@ venv/
 # OS
 .DS_Store
 
+aws/
+awscliv2.zip
+__pycache__/
+venv/

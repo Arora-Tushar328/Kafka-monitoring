@@ -1,15 +1,17 @@
-version: "3.9"
+version: "3.8"
 
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
-    ports:
-      - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-    restart: unless-stopped
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -18,33 +20,23 @@ services:
       - zookeeper
     ports:
       - "9092:9092"
+      - "29092:29092"
       - "9999:9999"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_JMX_PORT: 9999
       KAFKA_JMX_HOSTNAME: kafka
-      KAFKA_OPTS: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
-    restart: unless-stopped
-
-  kafka-jmx-exporter:
-    build: ./jmx-exporter
-    container_name: kafka-jmx-exporter
-    depends_on:
-      - kafka
-    ports:
-      - "9404:9404"
-    restart: unless-stopped
+    volumes:
+      - kafka_data:/var/lib/kafka/data
 
   kafka-exporter:
     image: danielqsj/kafka-exporter:latest
@@ -53,54 +45,169 @@ services:
       - kafka
     command:
       - "--kafka.server=kafka:9092"
-      - "--web.listen-address=:9308"
+      - "--log.level=info"
     ports:
       - "9308:9308"
-    restart: unless-stopped
+
+  kafka-jmx-exporter:
+    image: bitnami/jmx-exporter:latest
+    container_name: kafka-jmx-exporter
+    depends_on:
+      - kafka
+    command:
+      - "9404"
+      - "/config/kafka-jmx-config.yml"
+    volumes:
+      - ./jmx-exporter/kafka-jmx-config.yml:/config/kafka-jmx-config.yml:ro
+    ports:
+      - "9404:9404"
 
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
+    depends_on:
+      - kafka-exporter
+      - kafka-jmx-exporter
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
     ports:
       - "9090:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    depends_on:
-      - kafka-jmx-exporter
-      - kafka-exporter
-    restart: unless-stopped
 
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
-    ports:
-      - "3000:3000"
     depends_on:
       - prometheus
-    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
 
   weather-producer:
     build:
       context: .
       dockerfile: Dockerfile.weather-producer
     container_name: weather-producer
-    depends_on:
-      - kafka
+    command: ["python", "weather_producer.py"]
     environment:
       KAFKA_BROKER: kafka:9092
-    restart: unless-stopped
+      TOPIC: weather-data
+    depends_on:
+      - kafka
+
+  crypto-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.weather-producer
+    container_name: crypto-producer
+    command: ["python", "crypto_producer.py"]
+    environment:
+      KAFKA_BROKER: kafka:9092
+      TOPIC: crypto-data
+    depends_on:
+      - kafka
+
+  news-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.weather-producer
+    container_name: news-producer
+    command: ["python", "news_producer.py"]
+    environment:
+      KAFKA_BROKER: kafka:9092
+      TOPIC: news-data
+    depends_on:
+      - kafka
+
+  system-metrics-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.weather-producer
+    container_name: system-metrics-producer
+    command: ["python", "system_metrics_producer.py"]
+    environment:
+      KAFKA_BROKER: kafka:9092
+      TOPIC: system-metrics
+    depends_on:
+      - kafka
 
   weather-consumer:
     build:
       context: .
       dockerfile: Dockerfile.weather-consumer
     container_name: weather-consumer
-    depends_on:
-      - kafka
+    command: ["python", "weather_consumer.py"]
     environment:
       KAFKA_BROKER: kafka:9092
-    restart: unless-stopped
+      TOPIC: weather-data
+      CONSUMER_GROUP: weather-consumer-group
+    depends_on:
+      - kafka
+
+  weather-consumer-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.weather-consumer
+    container_name: weather-consumer-2
+    command: ["python", "weather_consumer.py"]
+    environment:
+      KAFKA_BROKER: kafka:9092
+      TOPIC: weather-data
+      CONSUMER_GROUP: weather-analytics-group
+    depends_on:
+      - kafka
+
+  crypto-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.weather-consumer
+    container_name: crypto-consumer
+    command: ["python", "weather_consumer.py"]
+    environment:
+      KAFKA_BROKER: kafka:9092
+      TOPIC: crypto-data
+      CONSUMER_GROUP: crypto-analytics-group
+    depends_on:
+      - kafka
+
+  news-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.weather-consumer
+    container_name: news-consumer
+    command: ["python", "weather_consumer.py"]
+    environment:
+      KAFKA_BROKER: kafka:9092
+      TOPIC: news-data
+      CONSUMER_GROUP: news-nlp-group
+    depends_on:
+      - kafka
+
+  system-metrics-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.weather-consumer
+    container_name: system-metrics-consumer
+    command: ["python", "weather_consumer.py"]
+    environment:
+      KAFKA_BROKER: kafka:9092
+      TOPIC: system-metrics
+      CONSUMER_GROUP: ops-monitor-group
+    depends_on:
+      - kafka
 
 volumes:
-  grafana_data:
+  zookeeper_data:
+  zookeeper_log:
+  kafka_data:
   prometheus_data:
+  grafana_data:
+
