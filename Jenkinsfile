@@ -1,60 +1,76 @@
 pipeline {
-  agent any
+    agent any
 
-  environment {
-    REGISTRY = "localhost:8083"
-    REPO = "docker-hosted"
-  }
-
-  stages {
-    stage('Checkout') {
-      steps { checkout scm }
+    environment {
+        IMAGE_TAG = ''
+        PRODUCER_IMAGE = 'kafka-monitoring/producer'
+        CONSUMER_IMAGE = 'kafka-monitoring/consumer'
+        NEXUS_DOCKER_REPO = 'your-nexus-docker-repo-url'   // e.g. nexus.example.com:8085
+        NEXUS_CREDENTIALS_ID = 'nexus-docker-creds'
     }
 
-    stage('Lint') {
-      steps {
-        sh 'python3 -m py_compile weather_producer.py weather_consumer.py'
-      }
-    }
-
-    stage('Build Images') {
-      steps {
-        script {
-          env.TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
         }
-        sh '''
-          docker build -t kafka-monitoring/producer:${TAG} -f Dockerfile.weather-producer .
-          docker build -t kafka-monitoring/consumer:${TAG} -f Dockerfile.weather-consumer .
-        '''
-      }
-    }
-   stage('Image Scan (Trivy)') {
-     steps {
-           sh '''
-           trivy image --severity HIGH,CRITICAL --exit-code 1 kafka-monitoring/producer:${TAG}
-           trivy image --severity HIGH,CRITICAL --exit-code 1 kafka-monitoring/consumer:${TAG}
-           '''
-      }
-     }
-    stage('Push to Nexus') {
-      steps {
-        withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
-          sh '''
-            echo "$NEXUS_PASS" | docker login ${REGISTRY} -u "$NEXUS_USER" --password-stdin
 
-            docker tag kafka-monitoring/producer:${TAG} ${REGISTRY}/${REPO}/producer:${TAG}
-            docker tag kafka-monitoring/consumer:${TAG} ${REGISTRY}/${REPO}/consumer:${TAG}
-            docker tag kafka-monitoring/producer:${TAG} ${REGISTRY}/${REPO}/producer:latest
-            docker tag kafka-monitoring/consumer:${TAG} ${REGISTRY}/${REPO}/consumer:latest
-
-            docker push ${REGISTRY}/${REPO}/producer:${TAG}
-            docker push ${REGISTRY}/${REPO}/consumer:${TAG}
-            docker push ${REGISTRY}/${REPO}/producer:latest
-            docker push ${REGISTRY}/${REPO}/consumer:latest
-          '''
+        stage('Lint') {
+            steps {
+                sh '''
+                    python3 -m py_compile weather_producer.py weather_consumer.py \
+                        crypto_producer.py news_producer.py system_metrics_producer.py
+                '''
+            }
         }
-      }
+
+        stage('Build Images') {
+            steps {
+                script {
+                    IMAGE_TAG = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                }
+                sh """
+                    docker build -t ${PRODUCER_IMAGE}:${IMAGE_TAG} -f Dockerfile.weather-producer .
+                    docker build -t ${CONSUMER_IMAGE}:${IMAGE_TAG} -f Dockerfile.weather-consumer .
+                """
+            }
+        }
+
+        stage('Image Scan (Trivy)') {
+            steps {
+                sh """
+                    trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 ${PRODUCER_IMAGE}:${IMAGE_TAG}
+                    trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 ${CONSUMER_IMAGE}:${IMAGE_TAG}
+                """
+            }
+        }
+
+        stage('Push to Nexus') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: "${NEXUS_CREDENTIALS_ID}",
+                    usernameVariable: 'NEXUS_USER',
+                    passwordVariable: 'NEXUS_PASS'
+                )]) {
+                    sh """
+                        echo "${NEXUS_PASS}" | docker login ${NEXUS_DOCKER_REPO} -u "${NEXUS_USER}" --password-stdin
+
+                        docker tag ${PRODUCER_IMAGE}:${IMAGE_TAG} ${NEXUS_DOCKER_REPO}/${PRODUCER_IMAGE}:${IMAGE_TAG}
+                        docker tag ${CONSUMER_IMAGE}:${IMAGE_TAG} ${NEXUS_DOCKER_REPO}/${CONSUMER_IMAGE}:${IMAGE_TAG}
+
+                        docker push ${NEXUS_DOCKER_REPO}/${PRODUCER_IMAGE}:${IMAGE_TAG}
+                        docker push ${NEXUS_DOCKER_REPO}/${CONSUMER_IMAGE}:${IMAGE_TAG}
+                    """
+                }
+            }
+        }
     }
-  }
+
+    post {
+        always {
+            sh 'docker image prune -f || true'
+        }
+    }
 }
 

@@ -1,6 +1,13 @@
 FROM python:3.10-slim
+
 WORKDIR /app
+
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
 COPY weather_producer.py crypto_producer.py news_producer.py system_metrics_producer.py /app/
-RUN pip install --no-cache-dir kafka-python requests psutil
+
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+ && pip install --no-cache-dir kafka-python requests psutil
+
 CMD ["python", "weather_producer.py"]
 
